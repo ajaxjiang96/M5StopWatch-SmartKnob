@@ -50,18 +50,21 @@ void ImuTracker::update() {
     // Convert to rad/s for all downstream math (detent engine uses radians).
     float raw_z = gz * (PI / 180.0f);
 
-    // Debias — no deadband on integration (that would filter slow rotation).
-    // Deadband is only used below for gating bias updates during stationarity.
-    gyro_z_ = raw_z - gyro_bias_;
+    // Debias, then apply deadband to filter sensor noise while passing
+    // slow intentional rotation (>0.7 deg/s).
+    float debiased = raw_z - gyro_bias_;
+    if (fabsf(debiased) < GYRO_DEADBAND) {
+        gyro_z_ = 0;
+    } else {
+        gyro_z_ = debiased;
+    }
 
-    // Integrate to get virtual angle (always, even for slow movement)
+    // Integrate to get virtual angle
     virtual_angle_ += gyro_z_ * dt * sensitivity_;
 
-    // Stationarity: track smoothed velocity. When stationary, slowly pull
-    // the bias toward the current raw reading to cancel residual drift.
-    // Uses fabsf(raw_z - gyro_bias_) so even slow constant rotation
-    // keeps us out of stationary mode.
-    float abs_vel = fabsf(gyro_z_);
+    // Stationarity: use the pre-deadband absolute value so slow movement
+    // still registers and prevents false-stationary state.
+    float abs_vel = fabsf(debiased);
     velocity_ewma_ = abs_vel * VELOCITY_EWMA_ALPHA
                      + velocity_ewma_ * (1.0f - VELOCITY_EWMA_ALPHA);
 
@@ -73,8 +76,8 @@ void ImuTracker::update() {
                 stationary_ = true;
             }
         }
-        // Only update bias when signal is below deadband (true noise, not drift)
-        if (stationary_ && abs_vel < GYRO_DEADBAND) {
+        // Slowly track bias when stationary
+        if (stationary_) {
             gyro_bias_ = raw_z * BIAS_ALPHA + gyro_bias_ * (1.0f - BIAS_ALPHA);
         }
     } else {

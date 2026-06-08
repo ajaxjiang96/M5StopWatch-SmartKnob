@@ -56,9 +56,9 @@ private:
     float sensitivity_;         // Angle sensitivity multiplier
 
     // Tuning constants (BMI270 noise floor ~2 deg/s = 0.035 rad/s)
-    static constexpr float GYRO_DEADBAND = 0.005f;       // rad/s for bias update gating only
-    static constexpr float BIAS_ALPHA = 0.002f;           // bias EWMA alpha
-    static constexpr float VELOCITY_EWMA_ALPHA = 0.02f;   // velocity smoothing
-    static constexpr float STATIONARY_THRESHOLD = 0.025f; // rad/s (~1.4 deg/s)
-    static constexpr uint32_t STATIONARY_TIME_MS = 300;
+    static constexpr float GYRO_DEADBAND = 0.012f;       // rad/s (~0.7 deg/s) integration gate
+    static constexpr float BIAS_ALPHA = 0.001f;           // bias EWMA alpha (slow, stable)
+    static constexpr float VELOCITY_EWMA_ALPHA = 0.05f;   // velocity smoothing (fast response)
+    static constexpr float STATIONARY_THRESHOLD = 0.015f; // rad/s (~0.86 deg/s)
+    static constexpr uint32_t STATIONARY_TIME_MS = 200;
 };
