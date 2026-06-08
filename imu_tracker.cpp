@@ -3,6 +3,10 @@
 #include <M5Unified.h>
 #include <math.h>
 
+#ifndef PI
+#define PI 3.14159265358979323846f
+#endif
+
 ImuTracker::ImuTracker()
     : virtual_angle_(0)
     , gyro_z_(0)
@@ -61,8 +65,9 @@ void ImuTracker::update() {
         return; // no new data
     }
 
-    // M5.Imu returns gyro in rad/s (M5Unified convention)
-    float raw_z = gz;
+    // M5.Imu returns gyro in degrees per second (dps).
+    // Convert to rad/s for all downstream math (detent engine uses radians).
+    float raw_z = gz * (PI / 180.0f);
 
     // Deadband: suppress noise-floor readings
     if (fabsf(raw_z - gyro_bias_) < GYRO_DEADBAND) {
