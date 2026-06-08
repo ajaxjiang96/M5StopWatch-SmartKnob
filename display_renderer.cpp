@@ -68,7 +68,10 @@ void DisplayRenderer::render(const KnobState& state, float device_angle) {
     auto& gfx = ready_ ? (LovyanGFX&)bg_ : (LovyanGFX&)M5.Display;
     gfx.fillScreen(TFT_BLACK);
 
-    float rot = -fmodf(device_angle, 2.0f * PI);
+    // DEBUG: hardcode 30° rotation to verify pushRotateZoom is working.
+    // If text rotates: IMU angle is the problem. If not: pushRotateZoom is broken.
+    // float rot = -fmodf(device_angle, 2.0f * PI);
+    float rot = -30.0f * PI / 180.0f; // -30 degrees
     int32_t num_positions = state.config.max_position - state.config.min_position + 1;
 
     // Adjusted sub-position with log easing at endstops
