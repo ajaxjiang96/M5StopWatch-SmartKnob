@@ -20,30 +20,11 @@ ImuTracker::ImuTracker()
 }
 
 void ImuTracker::begin() {
-    // M5Unified initializes the BMI270 automatically via M5.begin() config.
-    // Verify IMU is available.
-    if (!M5.Imu.isEnabled()) {
-        // IMU not available — will return zero angle
-        return;
-    }
+    if (!M5.Imu.isEnabled()) return;
 
-    // Take a few readings to establish initial bias
-    float sum_gz = 0;
-    int samples = 0;
-    for (int i = 0; i < 50; i++) {
-        float gx, gy, gz;
-        M5.Imu.update();
-        if (M5.Imu.getGyro(&gx, &gy, &gz)) {
-            sum_gz += gz;
-            samples++;
-        }
-        delay(5);
-    }
-    if (samples > 0) {
-        gyro_bias_ = sum_gz / samples;
-    }
-
-    last_update_us_ = micros();
+    // Auto-calibrate on boot: zero angle, sample fresh bias
+    calibrate();
+    Serial.println("IMU auto-calibrated on boot");
 }
 
 void ImuTracker::update() {

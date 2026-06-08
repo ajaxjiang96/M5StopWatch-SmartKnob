@@ -21,20 +21,11 @@ void DisplayRenderer::begin() {
     M5.Display.setBrightness(brightness_);
     M5.Display.fillScreen(TFT_BLACK);
 
-    // Set pivot to display center for pushRotated
-    M5.Display.setPivot(CENTER_X, CENTER_Y);
-
-    // Allocate sprite framebuffer in PSRAM (466x466 RGB565 = ~434KB)
     sprite_.setColorDepth(16);
-    bool ok = sprite_.createSprite(DISPLAY_SIZE, DISPLAY_SIZE);
-    ready_ = ok;
+    ready_ = sprite_.createSprite(DISPLAY_SIZE, DISPLAY_SIZE);
 
-    Serial.print("Sprite allocation: ");
-    Serial.println(ok ? "OK (PSRAM)" : "FAILED — falling back to direct draw");
-    Serial.print("Display: ");
-    Serial.print(M5.Display.width());
-    Serial.print("x");
-    Serial.println(M5.Display.height());
+    Serial.print("Sprite: ");
+    Serial.println(ready_ ? "OK" : "FAILED");
 
     if (ready_) {
         sprite_.fillScreen(TFT_BLACK);
@@ -47,11 +38,25 @@ void DisplayRenderer::setBrightness(uint8_t brightness) {
     M5.Display.setBrightness(brightness);
 }
 
+// Counter-rotate a point around the display center by -angle.
+// When the device rotates +θ, the drawn element rotates -θ to stay world-fixed.
+static void rotatePoint(int32_t& x, int32_t& y, float angle, int32_t cx, int32_t cy) {
+    float dx = (float)(x - cx);
+    float dy = (float)(y - cy);
+    float s = sinf(angle);
+    float c = cosf(angle);
+    x = cx + (int32_t)(dx * c + dy * s);
+    y = cy + (int32_t)(-dx * s + dy * c);
+}
+
 void DisplayRenderer::render(const KnobState& state, float device_angle) {
-    // Choose render target: sprite (tear-free) or direct (fallback)
     auto& gfx = ready_ ? (LovyanGFX&)sprite_ : (LovyanGFX&)M5.Display;
 
     gfx.fillScreen(TFT_BLACK);
+
+    // World-stabilization: counter-rotate by the negative of device rotation.
+    // fmod keeps the rotation in [-2PI, 2PI] range.
+    float rot = -fmodf(device_angle, 2.0f * PI);
 
     int32_t num_positions = state.config.max_position - state.config.min_position + 1;
 
@@ -84,53 +89,62 @@ void DisplayRenderer::render(const KnobState& state, float device_angle) {
 
     // ---- Progress fill bar ----
     if (num_positions > 1) {
-        int32_t height = (state.current_position - state.config.min_position)
-                         * DISPLAY_SIZE
-                         / (state.config.max_position - state.config.min_position);
-        gfx.fillRect(0, DISPLAY_SIZE - height, DISPLAY_SIZE, height, rgb565(COLOR_FILL));
+        int32_t h = (state.current_position - state.config.min_position)
+                    * DISPLAY_SIZE / (state.config.max_position - state.config.min_position);
+        gfx.fillRect(0, DISPLAY_SIZE - h, DISPLAY_SIZE, h, rgb565(COLOR_FILL));
     }
 
-    // ---- Position number (large, centered) ----
-    gfx.setTextColor(rgb565(COLOR_TEXT), TFT_BLACK);
-    gfx.setFont(&fonts::Font8);
-    gfx.setTextDatum(middle_center);
+    // ---- Position number (large) ----
+    // Counter-rotated: starts directly above center, orbits as device rotates
+    {
+        int32_t tx = CENTER_X;
+        int32_t ty = CENTER_Y - VALUE_Y_OFFSET;
+        rotatePoint(tx, ty, rot, CENTER_X, CENTER_Y);
 
-    char num_buf[16];
-    snprintf(num_buf, sizeof(num_buf), "%d", (int)state.current_position);
-    gfx.drawString(num_buf, CENTER_X, CENTER_Y - VALUE_Y_OFFSET);
+        gfx.setTextColor(rgb565(COLOR_TEXT), TFT_BLACK);
+        gfx.setFont(&fonts::Font8);
+        gfx.setTextDatum(middle_center);
 
-    // ---- Descriptor text (multi-line) ----
-    gfx.setFont(&fonts::Font4);
-    gfx.setTextDatum(top_center);
-
-    int32_t line_y = CENTER_Y + DESCRIPTION_Y_OFFSET;
-    const char* start = state.config.descriptor;
-    const char* end = start + strlen(state.config.descriptor);
-    while (start < end) {
-        const char* newline = strchr(start, '\n');
-        if (newline == nullptr) newline = end;
-
-        char line_buf[51];
-        size_t len = (size_t)(newline - start);
-        if (len > sizeof(line_buf) - 1) len = sizeof(line_buf) - 1;
-        memcpy(line_buf, start, len);
-        line_buf[len] = '\0';
-
-        gfx.drawString(line_buf, CENTER_X, line_y);
-        start = newline + 1;
-        line_y += gfx.fontHeight();
+        char num_buf[16];
+        snprintf(num_buf, sizeof(num_buf), "%d", (int)state.current_position);
+        gfx.drawString(num_buf, tx, ty);
     }
 
-    // ---- Radial arc ----
-    drawArc(gfx, state, left_bound, right_bound,
-            raw_angle, adjusted_angle, num_positions);
+    // ---- Descriptor text (multi-line, counter-rotated) ----
+    {
+        gfx.setFont(&fonts::Font4);
+        gfx.setTextDatum(top_center);
 
-    // Push sprite to display with world-stabilized counter-rotation.
-    // When device rotates +10°, the frame rotates -10° so all elements
-    // (text, arc, dots, progress bar) appear fixed in world-space.
+        int32_t base_ty = CENTER_Y + DESCRIPTION_Y_OFFSET;
+        const char* start = state.config.descriptor;
+        const char* end = start + strlen(state.config.descriptor);
+        while (start < end) {
+            const char* newline = strchr(start, '\n');
+            if (newline == nullptr) newline = end;
+
+            char line_buf[51];
+            size_t len = (size_t)(newline - start);
+            if (len > sizeof(line_buf) - 1) len = sizeof(line_buf) - 1;
+            memcpy(line_buf, start, len);
+            line_buf[len] = '\0';
+
+            int32_t lx = CENTER_X;
+            int32_t ly = base_ty;
+            rotatePoint(lx, ly, rot, CENTER_X, CENTER_Y);
+            gfx.drawString(line_buf, lx, ly);
+
+            start = newline + 1;
+            base_ty += gfx.fontHeight();
+        }
+    }
+
+    // ---- Radial arc (angles offset by device rotation) ----
+    drawArc(gfx, state, left_bound + rot, right_bound + rot,
+            raw_angle + rot, adjusted_angle + rot, num_positions);
+
+    // Push sprite to display (plain push, no rotation — all rotation is in the drawing)
     if (ready_) {
-        float rot = -fmodf(device_angle, 2.0f * PI);
-        sprite_.pushRotated(rot);
+        sprite_.pushSprite(0, 0);
     }
 }
 
@@ -143,16 +157,16 @@ void DisplayRenderer::drawArc(LovyanGFX& gfx, const KnobState& state,
 
     // Endstop markers
     if (num_positions > 0) {
-        int32_t x1 = CENTER_X + ARC_RADIUS * cosf(left_bound);
-        int32_t y1 = CENTER_Y - ARC_RADIUS * sinf(left_bound);
-        int32_t x2 = CENTER_X + (ARC_RADIUS - 15) * cosf(left_bound);
-        int32_t y2 = CENTER_Y - (ARC_RADIUS - 15) * sinf(left_bound);
+        int32_t x1 = CENTER_X + (int32_t)(ARC_RADIUS * cosf(left_bound));
+        int32_t y1 = CENTER_Y - (int32_t)(ARC_RADIUS * sinf(left_bound));
+        int32_t x2 = CENTER_X + (int32_t)((ARC_RADIUS - 15) * cosf(left_bound));
+        int32_t y2 = CENTER_Y - (int32_t)((ARC_RADIUS - 15) * sinf(left_bound));
         gfx.drawLine(x1, y1, x2, y2, rgb565(COLOR_ENDSTOP));
 
-        x1 = CENTER_X + ARC_RADIUS * cosf(right_bound);
-        y1 = CENTER_Y - ARC_RADIUS * sinf(right_bound);
-        x2 = CENTER_X + (ARC_RADIUS - 15) * cosf(right_bound);
-        y2 = CENTER_Y - (ARC_RADIUS - 15) * sinf(right_bound);
+        x1 = CENTER_X + (int32_t)(ARC_RADIUS * cosf(right_bound));
+        y1 = CENTER_Y - (int32_t)(ARC_RADIUS * sinf(right_bound));
+        x2 = CENTER_X + (int32_t)((ARC_RADIUS - 15) * cosf(right_bound));
+        y2 = CENTER_Y - (int32_t)((ARC_RADIUS - 15) * sinf(right_bound));
         gfx.drawLine(x1, y1, x2, y2, rgb565(COLOR_ENDSTOP));
     }
 
@@ -163,30 +177,30 @@ void DisplayRenderer::drawArc(LovyanGFX& gfx, const KnobState& state,
             || (state.current_position == state.config.max_position && state.sub_position_unit > 0));
 
     if (past_endstop) {
-        gfx.fillCircle(CENTER_X + dot_r * cosf(raw_angle),
-                       CENTER_Y - dot_r * sinf(raw_angle),
+        gfx.fillCircle(CENTER_X + (int32_t)(dot_r * cosf(raw_angle)),
+                       CENTER_Y - (int32_t)(dot_r * sinf(raw_angle)),
                        5, rgb565(COLOR_DOT));
 
         float step = 2.0f * PI / 180.0f;
         if (raw_angle < adjusted_angle) {
             for (float a = raw_angle; a <= adjusted_angle; a += step) {
-                gfx.fillCircle(CENTER_X + dot_r * cosf(a),
-                               CENTER_Y - dot_r * sinf(a),
+                gfx.fillCircle(CENTER_X + (int32_t)(dot_r * cosf(a)),
+                               CENTER_Y - (int32_t)(dot_r * sinf(a)),
                                2, rgb565(COLOR_DOT));
             }
         } else {
             for (float a = raw_angle; a >= adjusted_angle; a -= step) {
-                gfx.fillCircle(CENTER_X + dot_r * cosf(a),
-                               CENTER_Y - dot_r * sinf(a),
+                gfx.fillCircle(CENTER_X + (int32_t)(dot_r * cosf(a)),
+                               CENTER_Y - (int32_t)(dot_r * sinf(a)),
                                2, rgb565(COLOR_DOT));
             }
         }
-        gfx.fillCircle(CENTER_X + dot_r * cosf(adjusted_angle),
-                       CENTER_Y - dot_r * sinf(adjusted_angle),
+        gfx.fillCircle(CENTER_X + (int32_t)(dot_r * cosf(adjusted_angle)),
+                       CENTER_Y - (int32_t)(dot_r * sinf(adjusted_angle)),
                        2, rgb565(COLOR_DOT));
     } else {
-        gfx.fillCircle(CENTER_X + dot_r * cosf(adjusted_angle),
-                       CENTER_Y - dot_r * sinf(adjusted_angle),
+        gfx.fillCircle(CENTER_X + (int32_t)(dot_r * cosf(adjusted_angle)),
+                       CENTER_Y - (int32_t)(dot_r * sinf(adjusted_angle)),
                        DOT_RADIUS, rgb565(COLOR_DOT));
     }
 }
