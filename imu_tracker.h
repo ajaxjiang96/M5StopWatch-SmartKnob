@@ -55,10 +55,10 @@ private:
     uint32_t stationary_since_ms_; // How long we've been stationary
     float sensitivity_;         // Angle sensitivity multiplier
 
-    // Tuning constants (BMI270 noise floor is ~2 deg/s = 0.035 rad/s)
-    static constexpr float GYRO_DEADBAND = 0.04f;       // rad/s (~2.3 deg/s)
-    static constexpr float BIAS_ALPHA = 0.002f;          // faster bias convergence
-    static constexpr float VELOCITY_EWMA_ALPHA = 0.02f;  // Velocity EWMA alpha
-    static constexpr float STATIONARY_THRESHOLD = 0.06f; // rad/s (~3.4 deg/s)
-    static constexpr uint32_t STATIONARY_TIME_MS = 300;  // ms to confirm stationary
+    // Tuning constants (BMI270 noise floor ~2 deg/s = 0.035 rad/s)
+    static constexpr float GYRO_DEADBAND = 0.005f;       // rad/s for bias update gating only
+    static constexpr float BIAS_ALPHA = 0.002f;           // bias EWMA alpha
+    static constexpr float VELOCITY_EWMA_ALPHA = 0.02f;   // velocity smoothing
+    static constexpr float STATIONARY_THRESHOLD = 0.025f; // rad/s (~1.4 deg/s)
+    static constexpr uint32_t STATIONARY_TIME_MS = 300;
 };
