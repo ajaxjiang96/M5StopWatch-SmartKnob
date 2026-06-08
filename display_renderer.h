@@ -24,7 +24,7 @@ public:
     bool isReady() const { return ready_; }
 
 private:
-    LGFX_Sprite sprite_;
+    M5Canvas sprite_;   // M5Canvas extends LGFX_Sprite with PSRAM enabled
     bool ready_;
     uint8_t brightness_;
 
