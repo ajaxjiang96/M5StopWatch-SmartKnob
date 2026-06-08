@@ -39,7 +39,7 @@ struct KnobState {
 };
 
 /** Number of preset configurations */
-#define CONFIG_COUNT 11
+#define CONFIG_COUNT 9
 
 /** Array of preset configs defined in config.cpp */
 extern KnobConfig configs[CONFIG_COUNT];
