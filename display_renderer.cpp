@@ -11,7 +11,6 @@
 
 DisplayRenderer::DisplayRenderer()
     : bg_(&M5.Display)
-    , text_overlay_(&M5.Display)
     , ready_(false)
     , brightness_(200)
 {
@@ -25,7 +24,7 @@ void DisplayRenderer::begin() {
     bg_.setColorDepth(16);
     ready_ = bg_.createSprite(DISPLAY_SIZE, DISPLAY_SIZE);
 
-    Serial.print("BG sprite: ");
+    Serial.print("Sprite: ");
     Serial.println(ready_ ? "OK" : "FAILED");
 
     if (ready_) {
@@ -39,40 +38,28 @@ void DisplayRenderer::setBrightness(uint8_t brightness) {
     M5.Display.setBrightness(brightness);
 }
 
-// --- drawTextRotated ---
-// Render text upright into a small temp sprite, then pushRotated onto dst.
-// Sprite-to-sprite rotation is purely CPU/memory; it doesn't touch the
-// display driver, so it works where pushRotated-to-display failed.
-void DisplayRenderer::drawTextRotated(LovyanGFX& dst, const char* str,
-                                       const lgfx::IFont* font,
-                                       int32_t x, int32_t y, float angle,
-                                       uint32_t color) {
-    dst.setFont(font);
-    int32_t tw = dst.textWidth(str) + 4;
-    int32_t th = dst.fontHeight() + 4;
-    if (tw < 1 || th < 1) return;
-
-    // Temp sprite (DRAM is fine — text is small)
-    LGFX_Sprite tmp(&dst);
-    tmp.setColorDepth(16);
-    if (tmp.createSprite(tw, th) == nullptr) return;
-    tmp.fillScreen(TFT_BLACK);
-    tmp.setFont(font);
-    tmp.setTextColor(color, TFT_BLACK);
-    tmp.setTextDatum(top_left);
-    tmp.drawString(str, 2, 2);
-
-    tmp.pushRotateZoom(&dst, x, y, angle, 1.0f, 1.0f);
-    tmp.deleteSprite();
+// Counter-rotate a point around the display center.
+// When the device rotates +θ, the element moves to appear fixed in world-space.
+static void worldStabilize(int32_t& x, int32_t& y, float angle) {
+    float dx = (float)(x - 233);
+    float dy = (float)(y - 233);
+    float s = sinf(angle);
+    float c = cosf(angle);
+    x = 233 + (int32_t)(dx * c + dy * s);
+    y = 233 + (int32_t)(-dx * s + dy * c);
 }
 
 void DisplayRenderer::render(const KnobState& state, float device_angle) {
-    // ---- 1. Draw background elements (arc + bar) onto bg_ sprite ----
-    bg_.fillScreen(TFT_BLACK);
+    auto& gfx = ready_ ? (LovyanGFX&)bg_ : (LovyanGFX&)M5.Display;
+
+    gfx.fillScreen(TFT_BLACK);
+
+    // World-stabilization: negated device rotation angle
+    float rot = -fmodf(device_angle, 2.0f * PI);
 
     int32_t num_positions = state.config.max_position - state.config.min_position + 1;
 
-    // Adjusted sub-position with log easing at endstops
+    // ---- Adjusted sub-position (log easing at endstops) ----
     float adjusted_sub_position = state.sub_position_unit * state.config.position_width_radians;
     if (num_positions > 0) {
         if (state.current_position == state.config.min_position && state.sub_position_unit < 0) {
@@ -84,6 +71,7 @@ void DisplayRenderer::render(const KnobState& state, float device_angle) {
         }
     }
 
+    // ---- Arc bounds ----
     float left_bound = PI / 2.0f;
     float right_bound = 0.0f;
     if (num_positions > 0) {
@@ -96,50 +84,61 @@ void DisplayRenderer::render(const KnobState& state, float device_angle) {
         - (state.current_position - state.config.min_position) * state.config.position_width_radians;
     float adjusted_angle = raw_angle - adjusted_sub_position;
 
-    // Progress bar
+    // ---- Progress fill bar ----
     if (num_positions > 1) {
         int32_t h = (state.current_position - state.config.min_position)
                     * DISPLAY_SIZE / (state.config.max_position - state.config.min_position);
-        bg_.fillRect(0, DISPLAY_SIZE - h, DISPLAY_SIZE, h, rgb565(COLOR_FILL));
+        gfx.fillRect(0, DISPLAY_SIZE - h, DISPLAY_SIZE, h, rgb565(COLOR_FILL));
     }
 
-    // Arc (angles offset by device rotation for world stabilization)
-    float rot = -fmodf(device_angle, 2.0f * PI);
-    drawArc(bg_, state, left_bound + rot, right_bound + rot,
+    // ---- Position number (center-top, world-stabilized position) ----
+    {
+        int32_t tx = CENTER_X;
+        int32_t ty = CENTER_Y - VALUE_Y_OFFSET;
+        worldStabilize(tx, ty, rot);
+
+        gfx.setTextColor(rgb565(COLOR_TEXT), TFT_BLACK);
+        gfx.setFont(&fonts::Font8);
+        gfx.setTextDatum(middle_center);
+
+        char num_buf[16];
+        snprintf(num_buf, sizeof(num_buf), "%d", (int)state.current_position);
+        gfx.drawString(num_buf, tx, ty);
+    }
+
+    // ---- Descriptor text (below center, world-stabilized position) ----
+    {
+        gfx.setFont(&fonts::Font4);
+        gfx.setTextDatum(top_center);
+
+        int32_t base_ty = CENTER_Y + DESCRIPTION_Y_OFFSET;
+        const char* start = state.config.descriptor;
+        const char* end = start + strlen(state.config.descriptor);
+        while (start < end) {
+            const char* newline = strchr(start, '\n');
+            if (newline == nullptr) newline = end;
+
+            char line_buf[51];
+            size_t len = (size_t)(newline - start);
+            if (len > sizeof(line_buf) - 1) len = sizeof(line_buf) - 1;
+            memcpy(line_buf, start, len);
+            line_buf[len] = '\0';
+
+            int32_t lx = CENTER_X;
+            int32_t ly = base_ty;
+            worldStabilize(lx, ly, rot);
+            gfx.drawString(line_buf, lx, ly);
+
+            start = newline + 1;
+            base_ty += gfx.fontHeight();
+        }
+    }
+
+    // ---- Radial arc (angles offset by device rotation) ----
+    drawArc(gfx, state, left_bound + rot, right_bound + rot,
             raw_angle + rot, adjusted_angle + rot, num_positions);
 
-    // ---- 2. Draw text elements with full rotation (position + orientation) ----
-    uint16_t text_color = rgb565(COLOR_TEXT);
-    char buf[32];
-
-    // Position number at center-top
-    snprintf(buf, sizeof(buf), "%d", (int)state.current_position);
-    drawTextRotated(bg_, buf, &fonts::Font8,
-                    CENTER_X, CENTER_Y - VALUE_Y_OFFSET, rot, text_color);
-
-    // Descriptor lines below center
-    int32_t line_y = CENTER_Y + DESCRIPTION_Y_OFFSET;
-    const char* start = state.config.descriptor;
-    const char* end = start + strlen(state.config.descriptor);
-    while (start < end) {
-        const char* newline = strchr(start, '\n');
-        if (newline == nullptr) newline = end;
-
-        char line[51];
-        size_t len = (size_t)(newline - start);
-        if (len > sizeof(line) - 1) len = sizeof(line) - 1;
-        memcpy(line, start, len);
-        line[len] = '\0';
-
-        drawTextRotated(bg_, line, &fonts::Font4,
-                        CENTER_X, line_y, rot, text_color);
-
-        bg_.setFont(&fonts::Font4);
-        line_y += bg_.fontHeight();
-        start = newline + 1;
-    }
-
-    // ---- 3. Push to display ----
+    // Push to display
     if (ready_) {
         bg_.pushSprite(0, 0);
     }
