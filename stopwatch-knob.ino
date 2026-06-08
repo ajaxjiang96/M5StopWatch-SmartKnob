@@ -159,6 +159,14 @@ void loop() {
     // ---- 7. Handle UI input (buttons, touch taps) ----
     uint8_t new_config_idx = ui.update();
 
+    // Long-press calibrates: re-zero IMU angle and bias, reset position
+    if (ui.longPress()) {
+        imu.calibrate();
+        detent.setConfig(configs[current_config_index]);
+        haptic.trigger(HapticMotor::DOUBLE_CLICK);
+        Serial.println("Calibrated: angle zeroed, bias sampled, position reset");
+    }
+
     // Check for button-press haptic feedback
     if (ui.keyAPressed() || ui.keyBPressed() || ui.tapLeft() || ui.tapRight()) {
         haptic.trigger(HapticMotor::DOUBLE_CLICK);

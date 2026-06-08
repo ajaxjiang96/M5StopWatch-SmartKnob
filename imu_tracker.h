@@ -41,6 +41,9 @@ public:
     void setSensitivity(float s) { sensitivity_ = s; }
     float getSensitivity() const { return sensitivity_; }
 
+    /** Re-zero: reset angle to 0 and recalibrate bias. Call on long-press. */
+    void calibrate();
+
 private:
     float virtual_angle_;       // Cumulative integrated angle (radians)
     float gyro_z_;              // Current Z angular velocity (rad/s)
@@ -52,10 +55,10 @@ private:
     uint32_t stationary_since_ms_; // How long we've been stationary
     float sensitivity_;         // Angle sensitivity multiplier
 
-    // Tuning constants
-    static constexpr float GYRO_DEADBAND = 0.008f;      // rad/s (~0.5 deg/s)
-    static constexpr float BIAS_ALPHA = 0.0005f;         // Bias EWMA alpha
-    static constexpr float VELOCITY_EWMA_ALPHA = 0.01f;  // Velocity EWMA alpha
-    static constexpr float STATIONARY_THRESHOLD = 0.03f; // rad/s (~1.7 deg/s)
-    static constexpr uint32_t STATIONARY_TIME_MS = 400;  // ms to confirm stationary
+    // Tuning constants (BMI270 noise floor is ~2 deg/s = 0.035 rad/s)
+    static constexpr float GYRO_DEADBAND = 0.04f;       // rad/s (~2.3 deg/s)
+    static constexpr float BIAS_ALPHA = 0.002f;          // faster bias convergence
+    static constexpr float VELOCITY_EWMA_ALPHA = 0.02f;  // Velocity EWMA alpha
+    static constexpr float STATIONARY_THRESHOLD = 0.06f; // rad/s (~3.4 deg/s)
+    static constexpr uint32_t STATIONARY_TIME_MS = 300;  // ms to confirm stationary
 };

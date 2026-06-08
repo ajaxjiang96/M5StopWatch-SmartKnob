@@ -42,6 +42,9 @@ public:
     /** Check if KEYB was just pressed this frame. */
     bool keyBPressed() const { return keyb_pressed_; }
 
+    /** Check if either button was long-pressed (>1s) this frame. */
+    bool longPress() const { return long_press_; }
+
     /** Check if a tap occurred on the left/right third. */
     bool tapLeft() const { return tap_left_; }
     bool tapRight() const { return tap_right_; }
@@ -52,8 +55,11 @@ private:
     // Button state
     bool keya_pressed_;
     bool keyb_pressed_;
+    bool long_press_;
     bool last_keya_;
     bool last_keyb_;
+    uint32_t keya_hold_start_ms_;
+    uint32_t keyb_hold_start_ms_;
 
     // Touch state
     bool touching_;
@@ -74,6 +80,7 @@ private:
     uint32_t last_button_check_ms_;
 
     static constexpr uint32_t BUTTON_DEBOUNCE_MS = 30;
+    static constexpr uint32_t LONG_PRESS_MS = 800;     // hold duration for calibration
     static constexpr uint32_t TAP_MAX_MS = 300;        // max duration for a "tap"
     static constexpr int32_t TAP_MOVE_THRESHOLD = 20;  // max pixels moved for tap
     static constexpr int32_t DISPLAY_SIZE = 466;

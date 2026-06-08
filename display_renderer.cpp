@@ -21,6 +21,9 @@ void DisplayRenderer::begin() {
     M5.Display.setBrightness(brightness_);
     M5.Display.fillScreen(TFT_BLACK);
 
+    // Set pivot to display center for pushRotated
+    M5.Display.setPivot(CENTER_X, CENTER_Y);
+
     // Allocate sprite framebuffer in PSRAM (466x466 RGB565 = ~434KB)
     sprite_.setColorDepth(16);
     bool ok = sprite_.createSprite(DISPLAY_SIZE, DISPLAY_SIZE);
@@ -118,14 +121,16 @@ void DisplayRenderer::render(const KnobState& state, float device_angle) {
         line_y += gfx.fontHeight();
     }
 
-    // ---- Radial arc (world-stabilized: counter-rotate by device angle) ----
-    float stabilize = fmodf(device_angle, 2.0f * PI);
-    drawArc(gfx, state, left_bound - stabilize, right_bound - stabilize,
-            raw_angle - stabilize, adjusted_angle - stabilize, num_positions);
+    // ---- Radial arc ----
+    drawArc(gfx, state, left_bound, right_bound,
+            raw_angle, adjusted_angle, num_positions);
 
-    // Push sprite to display
+    // Push sprite to display with world-stabilized counter-rotation.
+    // When device rotates +10°, the frame rotates -10° so all elements
+    // (text, arc, dots, progress bar) appear fixed in world-space.
     if (ready_) {
-        sprite_.pushSprite(0, 0);
+        float rot = -fmodf(device_angle, 2.0f * PI);
+        sprite_.pushRotated(rot);
     }
 }
 

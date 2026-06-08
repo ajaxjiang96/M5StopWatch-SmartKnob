@@ -100,3 +100,29 @@ void ImuTracker::update() {
         stationary_since_ms_ = 0;
     }
 }
+
+void ImuTracker::calibrate() {
+    // Re-zero: reset angle and take fresh bias sample
+    virtual_angle_ = 0;
+    gyro_bias_ = 0;
+    velocity_ewma_ = 0;
+    stationary_ = false;
+    stationary_since_ms_ = 0;
+
+    // Sample bias over ~200ms
+    float sum_gz = 0;
+    int samples = 0;
+    for (int i = 0; i < 30; i++) {
+        float gx, gy, gz;
+        M5.Imu.update();
+        if (M5.Imu.getGyro(&gx, &gy, &gz)) {
+            sum_gz += gz * (PI / 180.0f);
+            samples++;
+        }
+        delay(6);
+    }
+    if (samples > 0) {
+        gyro_bias_ = sum_gz / samples;
+    }
+    last_update_us_ = micros();
+}

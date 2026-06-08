@@ -18,8 +18,11 @@ UiManager::UiManager()
     : config_index_(0)
     , keya_pressed_(false)
     , keyb_pressed_(false)
+    , long_press_(false)
     , last_keya_(false)
     , last_keyb_(false)
+    , keya_hold_start_ms_(0)
+    , keyb_hold_start_ms_(0)
     , touching_(false)
     , touch_x_(0), touch_y_(0)
     , last_touch_x_(0), last_touch_y_(0)
@@ -50,27 +53,49 @@ uint8_t UiManager::update() {
     // Reset per-frame flags
     keya_pressed_ = false;
     keyb_pressed_ = false;
+    long_press_ = false;
     tap_left_ = false;
     tap_right_ = false;
     accumulated_delta_ = 0;  // consumed each frame by getTouchDelta
 
-    // ---- Button handling (with debounce) ----
+    // ---- Button handling (with debounce + long-press) ----
     if (now - last_button_check_ms_ >= BUTTON_DEBOUNCE_MS) {
         last_button_check_ms_ = now;
 
         bool keya = !digitalRead(2); // active low
         bool keyb = !digitalRead(1);
 
+        // KEYA — rising edge = short press, sustained = long press
         if (keya && !last_keya_) {
-            keya_pressed_ = true;
-            config_index_ = (config_index_ + 1) % CONFIG_COUNT;
+            keya_hold_start_ms_ = now;
         }
+        if (keya && last_keya_ && now - keya_hold_start_ms_ > LONG_PRESS_MS) {
+            long_press_ = true;
+            keya_hold_start_ms_ = now; // prevent re-fire
+        }
+        if (!keya && last_keya_) {
+            if (now - keya_hold_start_ms_ < LONG_PRESS_MS) {
+                keya_pressed_ = true;
+                config_index_ = (config_index_ + 1) % CONFIG_COUNT;
+            }
+        }
+
+        // KEYB — rising edge = short press, sustained = long press
         if (keyb && !last_keyb_) {
-            keyb_pressed_ = true;
-            if (config_index_ == 0) {
-                config_index_ = CONFIG_COUNT - 1;
-            } else {
-                config_index_--;
+            keyb_hold_start_ms_ = now;
+        }
+        if (keyb && last_keyb_ && now - keyb_hold_start_ms_ > LONG_PRESS_MS) {
+            long_press_ = true;
+            keyb_hold_start_ms_ = now;
+        }
+        if (!keyb && last_keyb_) {
+            if (now - keyb_hold_start_ms_ < LONG_PRESS_MS) {
+                keyb_pressed_ = true;
+                if (config_index_ == 0) {
+                    config_index_ = CONFIG_COUNT - 1;
+                } else {
+                    config_index_--;
+                }
             }
         }
 
