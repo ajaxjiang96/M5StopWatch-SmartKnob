@@ -34,6 +34,10 @@ private:
     void drawArc(LovyanGFX& gfx, const KnobState& state, float left_bound, float right_bound,
                  float raw_angle, float adjusted_angle, int32_t num_positions);
 
+    /// Render text to a small sprite, then pushRotateZoom onto dst with pivot at center.
+    void drawTextRotated(LovyanGFX& dst, const char* str, const lgfx::v1::IFont* font,
+                         int32_t cx, int32_t cy, float angle, uint32_t rgb888);
+
     static constexpr uint16_t rgb565(uint32_t rgb) {
         return ((rgb >> 19) & 0x1F) << 11 | ((rgb >> 10) & 0x3F) << 5 | ((rgb >> 3) & 0x1F);
     }
