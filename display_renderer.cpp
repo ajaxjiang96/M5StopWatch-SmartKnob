@@ -44,7 +44,7 @@ void DisplayRenderer::setBrightness(uint8_t brightness) {
     M5.Display.setBrightness(brightness);
 }
 
-void DisplayRenderer::render(const KnobState& state) {
+void DisplayRenderer::render(const KnobState& state, float device_angle) {
     // Choose render target: sprite (tear-free) or direct (fallback)
     auto& gfx = ready_ ? (LovyanGFX&)sprite_ : (LovyanGFX&)M5.Display;
 
@@ -121,9 +121,11 @@ void DisplayRenderer::render(const KnobState& state) {
     // ---- Radial arc ----
     drawArc(gfx, state, left_bound, right_bound, raw_angle, adjusted_angle, num_positions);
 
-    // Push sprite to display
+    // Push sprite to display with world-stabilized counter-rotation.
+    // When device rotates +10°, UI rotates -10° so elements appear fixed in space.
     if (ready_) {
-        sprite_.pushSprite(0, 0);
+        float rot = -fmodf(device_angle, 2.0f * PI);
+        sprite_.pushRotatedWithAA(rot);
     }
 }
 

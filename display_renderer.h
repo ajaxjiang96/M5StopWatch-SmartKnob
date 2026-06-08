@@ -14,8 +14,10 @@ public:
     /** Allocate the sprite framebuffer. Call once in setup(). */
     void begin();
 
-    /** Render a frame from the current knob state. Call at ~30fps. */
-    void render(const KnobState& state);
+    /** Render a frame from the current knob state.
+     *  @param state  current knob position/config
+     *  @param device_angle  physical device rotation in radians (for world-stabilized UI) */
+    void render(const KnobState& state, float device_angle = 0);
 
     /** Set display brightness (0-255). */
     void setBrightness(uint8_t brightness);

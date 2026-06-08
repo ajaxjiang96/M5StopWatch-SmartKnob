@@ -182,7 +182,7 @@ void loop() {
         // Preserve runtime position state
         state.current_position = detent.getPosition();
         state.sub_position_unit = detent.getSubPositionUnit();
-        display.render(state);
+        display.render(state, imu.getAngle());
     }
 
     // ---- 9. Debug output (1Hz) ----
