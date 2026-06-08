@@ -118,14 +118,14 @@ void DisplayRenderer::render(const KnobState& state, float device_angle) {
         line_y += gfx.fontHeight();
     }
 
-    // ---- Radial arc ----
-    drawArc(gfx, state, left_bound, right_bound, raw_angle, adjusted_angle, num_positions);
+    // ---- Radial arc (world-stabilized: counter-rotate by device angle) ----
+    float stabilize = fmodf(device_angle, 2.0f * PI);
+    drawArc(gfx, state, left_bound - stabilize, right_bound - stabilize,
+            raw_angle - stabilize, adjusted_angle - stabilize, num_positions);
 
-    // Push sprite to display with world-stabilized counter-rotation.
-    // When device rotates +10°, UI rotates -10° so elements appear fixed in space.
+    // Push sprite to display
     if (ready_) {
-        float rot = -fmodf(device_angle, 2.0f * PI);
-        sprite_.pushRotatedWithAA(rot);
+        sprite_.pushSprite(0, 0);
     }
 }
 
