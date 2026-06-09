@@ -1,0 +1,22 @@
+# Build output
+build/
+*.bin
+*.elf
+*.hex
+*.map
+
+# Arduino IDE
+*.tmp
+
+# macOS
+.DS_Store
+._*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Dependencies (installed via Library Manager)
+libraries/
