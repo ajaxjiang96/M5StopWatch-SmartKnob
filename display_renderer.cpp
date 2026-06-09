@@ -34,6 +34,10 @@ void DisplayRenderer::begin() {
     }
 }
 
+// Forward: manual pixel rotation (pushRotateZoom is broken on M5GFX 0.2.22)
+static void softwareRotateBlit(LGFX_Sprite& dst, LGFX_Sprite& src,
+                                float angle, int32_t cx, int32_t cy);
+
 void DisplayRenderer::setBrightness(uint8_t brightness) {
     brightness_ = brightness;
     M5.Display.setBrightness(brightness);
@@ -102,12 +106,52 @@ void DisplayRenderer::render(const KnobState& state, float device_angle) {
         s = nl + 1;
     }
 
-    // ---- 3. Composite: push rotated text_layer_ onto bg_ ----
-    text_layer_.setPivot(CX, CY);
-    text_layer_.pushRotateZoom(&bg_, (float)CX, (float)CY, rot, 1.0f, 1.0f);
+    // ---- 3. Composite: software-rotate text onto background ----
+    // pushRotateZoom is broken on M5GFX 0.2.22; manual pixel rotation instead.
+    softwareRotateBlit(bg_, text_layer_, rot, CX, CY);
 
     // ---- 4. Push final frame to display ----
     bg_.pushSprite(0, 0);
+}
+
+// --- Manual pixel rotation: reads text_layer_ buffer, writes rotated to bg_ ---
+static void softwareRotateBlit(LGFX_Sprite& dst, LGFX_Sprite& src,
+                                float angle, int32_t cx, int32_t cy) {
+    uint16_t* sb = (uint16_t*)src.getBuffer();
+    uint16_t* db = (uint16_t*)dst.getBuffer();
+    if (!sb || !db) return;
+
+    int32_t sw = src.width(), sh = src.height();
+    int32_t dw = dst.width(), dh = dst.height();
+    float s = sinf(angle), c = cosf(angle);
+
+    // Compute rotated bounding box of source on destination
+    float corners[4][2] = {
+        {-cx, -cy}, {(float)sw-1-cx, -cy},
+        {(float)sw-1-cx, (float)sh-1-cy}, {-cx, (float)sh-1-cy}
+    };
+    int32_t x0 = dw, x1 = 0, y0 = dh, y1 = 0;
+    for (int i = 0; i < 4; i++) {
+        int32_t rx = (int32_t)(corners[i][0] * c - corners[i][1] * s) + cx;
+        int32_t ry = (int32_t)(corners[i][0] * s + corners[i][1] * c) + cy;
+        if (rx < 0) rx = 0; if (rx >= dw) rx = dw-1;
+        if (ry < 0) ry = 0; if (ry >= dh) ry = dh-1;
+        if (rx < x0) x0 = rx; if (rx > x1) x1 = rx;
+        if (ry < y0) y0 = ry; if (ry > y1) y1 = ry;
+    }
+
+    // Inverse rotation: destination → source
+    for (int32_t dy = y0; dy <= y1; dy++) {
+        for (int32_t dx = x0; dx <= x1; dx++) {
+            float fx = (dx - cx) * c + (dy - cy) * s;
+            float fy = -(dx - cx) * s + (dy - cy) * c;
+            int32_t sx = (int32_t)(fx + cx);
+            int32_t sy = (int32_t)(fy + cy);
+            if ((uint32_t)sx >= (uint32_t)sw || (uint32_t)sy >= (uint32_t)sh) continue;
+            uint16_t p = sb[sy * sw + sx];
+            if (p) db[dy * dw + dx] = p;  // skip black (transparent)
+        }
+    }
 }
 
 void DisplayRenderer::drawArc(LovyanGFX& gfx, const KnobState& state,
