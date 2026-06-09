@@ -47,9 +47,9 @@ static constexpr uint32_t DEBUG_INTERVAL_MS   = 1000; // 1 Hz debug output
 
 // ---- Rotation sensitivity presets ----
 // Higher = more virtual angle per physical rotation
-static constexpr float SENSITIVITY_DEFAULT = 1.0f;
-static constexpr float SENSITIVITY_FINE    = 3.0f;  // 256 positions mode
-static constexpr float SENSITIVITY_COARSE  = 0.8f;
+static constexpr float SENSITIVITY_DEFAULT = 3.0f;
+static constexpr float SENSITIVITY_FINE    = 6.0f;  // 256 positions mode
+static constexpr float SENSITIVITY_COARSE  = 2.0f;
 
 // ---- NVS keys ----
 static const char* NVS_NAMESPACE = "stopwatch";
