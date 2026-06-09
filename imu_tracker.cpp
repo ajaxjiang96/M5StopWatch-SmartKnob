@@ -3,62 +3,44 @@
 #include <M5Unified.h>
 #include <math.h>
 
+#ifndef PI
+#define PI 3.14159265358979323846f
+#endif
+
 ImuTracker::ImuTracker()
-    : angle_deg_(0), gyro_z_(0), gyro_bias_(0), velocity_ewma_(0)
-    , stationary_(false), last_us_(0), stationary_since_ms_(0) {}
+    : virtual_angle_(0), gyro_z_(0), gyro_bias_(0), velocity_ewma_(0)
+    , stationary_(false), last_update_us_(0), stationary_since_ms_(0) {}
 
 void ImuTracker::begin() {
     if (!M5.Imu.isEnabled()) return;
     calibrate();
-    Serial.println("IMU calibrated");
 }
 
 void ImuTracker::update() {
     if (!M5.Imu.isEnabled()) return;
 
-    uint32_t now = micros();
-    float dt = (now - last_us_) * 1e-6f;
-    last_us_ = now;
+    uint32_t now_us = micros();
+    float dt = (now_us - last_update_us_) * 1e-6f;
+    last_update_us_ = now_us;
     if (dt <= 0 || dt > 0.1f) dt = 0.008f;
 
     float gx, gy, gz;
-    bool fresh = M5.Imu.update();
+    M5.Imu.update();
     if (!M5.Imu.getGyro(&gx, &gy, &gz)) return;
 
-    // Diagnostic: compare raw integration vs actual angle change
-    static uint32_t calls, fresh_count, last_report;
-    static float sum_raw, sum_integrated, angle_start;
-    calls++;
-    if (fresh) fresh_count++;
-    sum_raw += gz * dt;               // raw gyro * dt (no sensitivity, no deadband)
-    sum_integrated += gyro_z_ * dt;   // what actually gets integrated (with deadband+sens)
-    if (calls == 1) angle_start = angle_deg_;
+    // M5.Imu returns gyro in degrees per second. Convert to rad/s.
+    float raw_z = gz * (PI / 180.0f);
 
-    if (millis() - last_report > 2000) {
-        last_report = millis();
-        float angle_change = angle_deg_ - angle_start;
-        Serial.print("IMU: fresh="); Serial.print(fresh_count);
-        Serial.print("/"); Serial.print(calls);
-        Serial.print(" rawSum="); Serial.print(sum_raw, 1); Serial.print("deg");
-        Serial.print(" intSum="); Serial.print(sum_integrated * sensitivity_, 1); Serial.print("deg");
-        Serial.print(" angleChg="); Serial.print(angle_change, 1); Serial.println("deg");
-        calls = fresh_count = 0;
-        sum_raw = sum_integrated = 0;
-    }
-
-    // gyro Z in deg/s from M5Unified. Deadband rejects noise (~2dps pk-pk)
-    // while passing intentional rotation. Integrate in degrees directly.
-    float debiased = gz - gyro_bias_;
-    if (fabsf(debiased) < 1.0f) {
+    if (fabsf(raw_z - gyro_bias_) < GYRO_DEADBAND) {
         gyro_z_ = 0;
     } else {
-        gyro_z_ = debiased;
+        gyro_z_ = raw_z - gyro_bias_;
     }
-    angle_deg_ += gyro_z_ * dt * sensitivity_;
 
-    // Stationarity detection
-    float abs_vel = fabsf(gyro_z_);
-    velocity_ewma_ = abs_vel * VELOCITY_EWMA_ALPHA + velocity_ewma_ * (1.0f - VELOCITY_EWMA_ALPHA);
+    virtual_angle_ += gyro_z_ * dt * sensitivity_;
+
+    velocity_ewma_ = fabsf(gyro_z_) * VELOCITY_EWMA_ALPHA
+                     + velocity_ewma_ * (1.0f - VELOCITY_EWMA_ALPHA);
 
     if (velocity_ewma_ < STATIONARY_THRESHOLD) {
         if (!stationary_) {
@@ -67,8 +49,8 @@ void ImuTracker::update() {
             else if (millis() - stationary_since_ms_ > STATIONARY_TIME_MS)
                 stationary_ = true;
         }
-        if (stationary_ && abs_vel < BIAS_GATE)
-            gyro_bias_ = gz * BIAS_ALPHA + gyro_bias_ * (1.0f - BIAS_ALPHA);
+        if (stationary_)
+            gyro_bias_ = raw_z * BIAS_ALPHA + gyro_bias_ * (1.0f - BIAS_ALPHA);
     } else {
         stationary_ = false;
         stationary_since_ms_ = 0;
@@ -76,7 +58,7 @@ void ImuTracker::update() {
 }
 
 void ImuTracker::calibrate() {
-    angle_deg_ = 0;
+    virtual_angle_ = 0;
     gyro_bias_ = 0;
     velocity_ewma_ = 0;
     stationary_ = false;
@@ -87,9 +69,9 @@ void ImuTracker::calibrate() {
     for (int i = 0; i < 30; i++) {
         float gx, gy, gz;
         M5.Imu.update();
-        if (M5.Imu.getGyro(&gx, &gy, &gz)) { sum += gz; n++; }
+        if (M5.Imu.getGyro(&gx, &gy, &gz)) { sum += gz * (PI / 180.0f); n++; }
         delay(6);
     }
     if (n > 0) gyro_bias_ = sum / n;
-    last_us_ = micros();
+    last_update_us_ = micros();
 }

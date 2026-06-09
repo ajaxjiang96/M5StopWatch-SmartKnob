@@ -45,13 +45,12 @@ static bool      config_changed_this_loop = false;
 static constexpr uint32_t DISPLAY_INTERVAL_MS = 33;  // ~30 fps
 static constexpr uint32_t DEBUG_INTERVAL_MS   = 1000; // 1 Hz debug output
 
-// ---- Rotation sensitivity presets ----
-// Higher = more virtual angle per physical rotation.
-// Baseline is 1.0 = 1:1 deg→deg mapping (gyro deg/s * PI/180 * sensitivity = rad/s virtual).
-// Tune after checking serial output during a known 90° rotation.
-static constexpr float SENSITIVITY_DEFAULT = 1.0f;
-static constexpr float SENSITIVITY_FINE    = 3.0f;  // 256 positions mode
-static constexpr float SENSITIVITY_COARSE  = 0.8f;
+// Rotation sensitivity presets. Empirically calibrated: the theoretical
+// 1:1 mapping requires ~6x multiplier on M5StopWatch (likely a M5Unified
+// internal scaling factor). Tune these if tracking feels off.
+static constexpr float SENSITIVITY_DEFAULT = 2.0f;
+static constexpr float SENSITIVITY_FINE    = 6.0f;  // 256 positions mode
+static constexpr float SENSITIVITY_COARSE  = 1.5f;
 
 // ---- NVS keys ----
 static const char* NVS_NAMESPACE = "stopwatch";
@@ -123,8 +122,8 @@ void loop() {
         // Touch drag adds to virtual angle directly.
         // Bypass IMU integration during touch to avoid conflicting inputs.
         virtual_angle += touch_delta * 0.5f; // touch sensitivity factor
-        imu.setAngleDeg(virtual_angle * 180.0f / PI); // resync IMU (rad→deg)
-        detent.setAngle(virtual_angle);              // sync detent engine (rad)
+        imu.setAngle(virtual_angle);          // resync IMU to touch position (rad)
+        detent.setAngle(virtual_angle);       // sync detent engine (rad)
     }
 
     // ---- 4. Update detent engine (position tracking) ----
@@ -202,7 +201,7 @@ void loop() {
         // Read battery level
         int batt = M5.Power.getBatteryLevel();
 
-        float vel_deg = imu.getVelocity();                // already deg/s
+        float vel_deg = imu.getVelocity() * 180.0f / PI;  // rad/s → deg/s
         float angle_deg = virtual_angle * 180.0f / PI;    // rad → deg
         Serial.print("Pos:"); Serial.print(detent.getPosition());
         Serial.print(" sub:"); Serial.print(detent.getSubPositionUnit(), 2);
