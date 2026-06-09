@@ -48,9 +48,11 @@ static constexpr uint32_t DEBUG_INTERVAL_MS   = 1000; // 1 Hz debug output
 // Rotation sensitivity presets. Empirically calibrated: the theoretical
 // 1:1 mapping requires ~6x multiplier on M5StopWatch (likely a M5Unified
 // internal scaling factor). Tune these if tracking feels off.
-static constexpr float SENSITIVITY_DEFAULT = 2.0f;
-static constexpr float SENSITIVITY_FINE    = 6.0f;  // 256 positions mode
-static constexpr float SENSITIVITY_COARSE  = 1.5f;
+// Empirically calibrated for M5StopWatch: M5Unified Arduino wrapper returns
+// gyro values ~16x smaller than the factory ESP-IDF driver. These compensate.
+static constexpr float SENSITIVITY_DEFAULT = 16.0f;
+static constexpr float SENSITIVITY_FINE    = 32.0f; // 256 positions mode
+static constexpr float SENSITIVITY_COARSE  = 12.0f;
 
 // ---- NVS keys ----
 static const char* NVS_NAMESPACE = "stopwatch";
