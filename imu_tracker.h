@@ -3,63 +3,47 @@
 #include <stdint.h>
 
 /**
- * IMU Tracker — reads BMI270 gyroscope and integrates Z-axis angular velocity
- * to produce a cumulative virtual angle that replaces the motor shaft angle
- * from the original SmartKnob.
+ * IMU Tracker — integrates BMI270 gyro Z (deg/s) to produce a cumulative
+ * angle in radians for the detent engine and display.
  *
- * Drift compensation: deadband → bias EWMA when stationary → gravity reference.
+ * Internal accumulation is in degrees (matching M5Unified's native unit).
+ * getAngle() converts to radians for the rest of the system.
  */
 class ImuTracker {
 public:
     ImuTracker();
-
-    /** Initialize IMU hardware. Call once in setup(). */
     void begin();
-
-    /**
-     * Update the tracker. Call every loop iteration (~120Hz).
-     * Reads gyro, integrates angle, updates drift compensation.
-     */
     void update();
 
-    /** Get the cumulative virtual angle in radians (unbounded). */
-    float getAngle() const { return virtual_angle_; }
+    /** Cumulative angle in radians (for detent engine, display rotation) */
+    float getAngle() const { return angle_deg_ * D2R; }
 
-    /** Get the instantaneous angular velocity in rad/s. */
+    /** Current angular velocity in deg/s */
     float getVelocity() const { return gyro_z_; }
 
-    /** Check if the device is currently stationary. */
     bool isStationary() const { return stationary_; }
-
-    /** Reset the virtual angle to zero. */
-    void resetAngle() { virtual_angle_ = 0; }
-
-    /** Set the virtual angle to a specific value (e.g., after touch input). */
-    void setAngle(float a) { virtual_angle_ = a; }
-
-    /** Set sensitivity multiplier for angle mapping (default 1.0). */
+    void resetAngle() { angle_deg_ = 0; }
+    void setAngleDeg(float deg) { angle_deg_ = deg; }
     void setSensitivity(float s) { sensitivity_ = s; }
     float getSensitivity() const { return sensitivity_; }
 
-    /** Re-zero: reset angle to 0 and recalibrate bias. Call on long-press. */
+    /** Re-zero angle and resample bias. Call on long-press. */
     void calibrate();
 
 private:
-    float virtual_angle_;       // Cumulative integrated angle (radians)
-    float gyro_z_;              // Current Z angular velocity (rad/s)
-    float gyro_bias_;           // Estimated gyro bias (rad/s)
-    float velocity_ewma_;       // EWMA of velocity for stationarity detection
-    bool stationary_;           // Currently stationary?
+    float angle_deg_;         // Cumulative angle in degrees
+    float gyro_z_;            // Current Z velocity (deg/s)
+    float gyro_bias_;         // Estimated bias (deg/s)
+    float velocity_ewma_;     // Smoothed |velocity|
+    bool stationary_;
+    uint32_t last_us_;
+    uint32_t stationary_since_ms_;
+    float sensitivity_ = 1.0f;
 
-    uint32_t last_update_us_;   // Micros at last update
-    uint32_t stationary_since_ms_; // How long we've been stationary
-    float sensitivity_;         // Angle sensitivity multiplier
-
-    // Deadband blocks ~sensor noise while passing intentional rotation.
-    // BMI270 noise ~2 deg/s pk-pk; 0.01 rad/s = 0.57 deg/s passes most movement.
-    static constexpr float GYRO_DEADBAND = 0.01f;
+    static constexpr float D2R = 3.14159265358979323846f / 180.0f;
     static constexpr float BIAS_ALPHA = 0.002f;
     static constexpr float VELOCITY_EWMA_ALPHA = 0.05f;
-    static constexpr float STATIONARY_THRESHOLD = 0.02f;
+    static constexpr float STATIONARY_THRESHOLD = 0.5f;   // deg/s
+    static constexpr float BIAS_GATE = 0.3f;              // deg/s
     static constexpr uint32_t STATIONARY_TIME_MS = 300;
 };

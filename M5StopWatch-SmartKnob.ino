@@ -123,8 +123,8 @@ void loop() {
         // Touch drag adds to virtual angle directly.
         // Bypass IMU integration during touch to avoid conflicting inputs.
         virtual_angle += touch_delta * 0.5f; // touch sensitivity factor
-        imu.setAngle(virtual_angle);          // resync IMU to touch position
-        detent.setAngle(virtual_angle);       // sync detent engine
+        imu.setAngleDeg(virtual_angle * 180.0f / PI); // resync IMU (rad→deg)
+        detent.setAngle(virtual_angle);              // sync detent engine (rad)
     }
 
     // ---- 4. Update detent engine (position tracking) ----
@@ -202,7 +202,7 @@ void loop() {
         // Read battery level
         int batt = M5.Power.getBatteryLevel();
 
-        float vel_deg = imu.getVelocity() * 180.0f / PI; // rad/s → deg/s
+        float vel_deg = imu.getVelocity();                // already deg/s
         float angle_deg = virtual_angle * 180.0f / PI;    // rad → deg
         Serial.print("Pos:"); Serial.print(detent.getPosition());
         Serial.print(" sub:"); Serial.print(detent.getSubPositionUnit(), 2);

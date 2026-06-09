@@ -3,78 +3,45 @@
 #include <M5Unified.h>
 #include <math.h>
 
-#ifndef PI
-#define PI 3.14159265358979323846f
-#endif
-
 ImuTracker::ImuTracker()
-    : virtual_angle_(0)
-    , gyro_z_(0)
-    , gyro_bias_(0)
-    , velocity_ewma_(0)
-    , stationary_(false)
-    , last_update_us_(0)
-    , stationary_since_ms_(0)
-    , sensitivity_(1.0f)
-{
-}
+    : angle_deg_(0), gyro_z_(0), gyro_bias_(0), velocity_ewma_(0)
+    , stationary_(false), last_us_(0), stationary_since_ms_(0) {}
 
 void ImuTracker::begin() {
     if (!M5.Imu.isEnabled()) return;
-
-    // Auto-calibrate on boot: zero angle, sample fresh bias
     calibrate();
-    Serial.println("IMU auto-calibrated on boot");
+    Serial.println("IMU calibrated");
 }
 
 void ImuTracker::update() {
     if (!M5.Imu.isEnabled()) return;
 
-    uint32_t now_us = micros();
-    float dt = (now_us - last_update_us_) * 1e-6f;
-    last_update_us_ = now_us;
+    uint32_t now = micros();
+    float dt = (now - last_us_) * 1e-6f;
+    last_us_ = now;
+    if (dt <= 0 || dt > 0.1f) dt = 0.008f;
 
-    // Clamp dt to avoid huge jumps after delays
-    if (dt <= 0 || dt > 0.1f) {
-        dt = 0.008f; // assume ~120Hz
-    }
-
-    // Read gyroscope
     float gx, gy, gz;
     M5.Imu.update();
-    if (!M5.Imu.getGyro(&gx, &gy, &gz)) {
-        return; // no new data
-    }
+    if (!M5.Imu.getGyro(&gx, &gy, &gz)) return;
 
-    // M5.Imu returns gyro in degrees per second (dps).
-    // Convert to rad/s for all downstream math (detent engine uses radians).
-    float raw_z = gz * (PI / 180.0f);
+    // gyro Z in deg/s. Debias and integrate in degrees directly.
+    gyro_z_ = gz - gyro_bias_;
+    angle_deg_ += gyro_z_ * dt * sensitivity_;
 
-    // Debias — no deadband on integration. Every bit of signal counts.
-    // Bias is only updated when genuinely stationary (see below).
-    gyro_z_ = raw_z - gyro_bias_;
-
-    // Integrate to get virtual angle
-    virtual_angle_ += gyro_z_ * dt * sensitivity_;
-
-    // Stationarity: smooth the absolute velocity. When stationary for long
-    // enough AND the raw reading is below the noise gate, nudge the bias.
+    // Stationarity detection
     float abs_vel = fabsf(gyro_z_);
-    velocity_ewma_ = abs_vel * VELOCITY_EWMA_ALPHA
-                     + velocity_ewma_ * (1.0f - VELOCITY_EWMA_ALPHA);
+    velocity_ewma_ = abs_vel * VELOCITY_EWMA_ALPHA + velocity_ewma_ * (1.0f - VELOCITY_EWMA_ALPHA);
 
     if (velocity_ewma_ < STATIONARY_THRESHOLD) {
         if (!stationary_) {
-            if (stationary_since_ms_ == 0) {
+            if (stationary_since_ms_ == 0)
                 stationary_since_ms_ = millis();
-            } else if (millis() - stationary_since_ms_ > STATIONARY_TIME_MS) {
+            else if (millis() - stationary_since_ms_ > STATIONARY_TIME_MS)
                 stationary_ = true;
-            }
         }
-        // Only update bias when raw signal is tiny (true noise region)
-        if (stationary_ && fabsf(gyro_z_) < GYRO_DEADBAND) {
-            gyro_bias_ = raw_z * BIAS_ALPHA + gyro_bias_ * (1.0f - BIAS_ALPHA);
-        }
+        if (stationary_ && abs_vel < BIAS_GATE)
+            gyro_bias_ = gz * BIAS_ALPHA + gyro_bias_ * (1.0f - BIAS_ALPHA);
     } else {
         stationary_ = false;
         stationary_since_ms_ = 0;
@@ -82,27 +49,20 @@ void ImuTracker::update() {
 }
 
 void ImuTracker::calibrate() {
-    // Re-zero: reset angle and take fresh bias sample
-    virtual_angle_ = 0;
+    angle_deg_ = 0;
     gyro_bias_ = 0;
     velocity_ewma_ = 0;
     stationary_ = false;
     stationary_since_ms_ = 0;
 
-    // Sample bias over ~200ms
-    float sum_gz = 0;
-    int samples = 0;
+    float sum = 0;
+    int n = 0;
     for (int i = 0; i < 30; i++) {
         float gx, gy, gz;
         M5.Imu.update();
-        if (M5.Imu.getGyro(&gx, &gy, &gz)) {
-            sum_gz += gz * (PI / 180.0f);
-            samples++;
-        }
+        if (M5.Imu.getGyro(&gx, &gy, &gz)) { sum += gz; n++; }
         delay(6);
     }
-    if (samples > 0) {
-        gyro_bias_ = sum_gz / samples;
-    }
-    last_update_us_ = micros();
+    if (n > 0) gyro_bias_ = sum / n;
+    last_us_ = micros();
 }
