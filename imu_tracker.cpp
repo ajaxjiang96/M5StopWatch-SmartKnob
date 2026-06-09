@@ -25,7 +25,7 @@ void ImuTracker::update() {
     if (dt <= 0 || dt > 0.1f) dt = 0.008f;
 
     float gx, gy, gz;
-    M5.Imu.update();
+    // Let getGyro call update() internally — avoids double-read race
     if (!M5.Imu.getGyro(&gx, &gy, &gz)) return;
 
     // M5.Imu returns gyro in degrees per second. Convert to rad/s.
@@ -68,7 +68,6 @@ void ImuTracker::calibrate() {
     int n = 0;
     for (int i = 0; i < 30; i++) {
         float gx, gy, gz;
-        M5.Imu.update();
         if (M5.Imu.getGyro(&gx, &gy, &gz)) { sum += gz * (PI / 180.0f); n++; }
         delay(6);
     }
