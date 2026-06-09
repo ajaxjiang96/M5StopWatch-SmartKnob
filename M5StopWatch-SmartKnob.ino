@@ -48,11 +48,24 @@ static constexpr uint32_t DEBUG_INTERVAL_MS   = 1000; // 1 Hz debug output
 // Rotation sensitivity presets. Empirically calibrated: the theoretical
 // 1:1 mapping requires ~6x multiplier on M5StopWatch (likely a M5Unified
 // internal scaling factor). Tune these if tracking feels off.
-// Empirically calibrated for M5StopWatch: M5Unified Arduino wrapper returns
-// gyro values ~16x smaller than the factory ESP-IDF driver. These compensate.
-static constexpr float SENSITIVITY_DEFAULT = 16.0f;
-static constexpr float SENSITIVITY_FINE    = 32.0f; // 256 positions mode
-static constexpr float SENSITIVITY_COARSE  = 12.0f;
+// =========================================================================
+// ANGLE CALIBRATION — full math chain
+// =========================================================================
+// BMI270 sensor → int16_t raw (range set by config file, likely ±125 dps)
+// M5Unified assumes ±2000 dps:  raw * (2000/32768) = deg/s
+// Our code:  deg/s * PI/180 = rad/s → integrate * dt → rad → getAngle()
+//
+// If BMI270 is configured for ±125 dps but M5Unified assumes ±2000 dps,
+// the returned deg/s is 125/2000 = 1/16 of reality. GYRO_SCALE compensates.
+//
+// To verify: read BMI270 register 0x43 (GYR_RANGE). If 0x04 = ±125 dps,
+// the ratio is exactly 2000/125 = 16. Adjust GYRO_SCALE to match.
+// =========================================================================
+static constexpr float GYRO_SCALE = 2000.0f / 125.0f;  // assumed / actual range
+
+static constexpr float SENSITIVITY_DEFAULT = 1.0f * GYRO_SCALE;
+static constexpr float SENSITIVITY_FINE    = 2.0f * GYRO_SCALE; // 256-pos mode
+static constexpr float SENSITIVITY_COARSE  = 0.75f * GYRO_SCALE;
 
 // ---- NVS keys ----
 static const char* NVS_NAMESPACE = "stopwatch";
