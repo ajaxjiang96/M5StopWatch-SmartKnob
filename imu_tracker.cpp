@@ -22,8 +22,20 @@ void ImuTracker::update() {
     if (dt <= 0 || dt > 0.1f) dt = 0.008f;
 
     float gx, gy, gz;
-    M5.Imu.update();
+    bool fresh = M5.Imu.update();
     if (!M5.Imu.getGyro(&gx, &gy, &gz)) return;
+
+    // Diagnostic: track how often the IMU produces fresh data
+    static uint32_t calls, fresh_count, last_report;
+    calls++;
+    if (fresh) fresh_count++;
+    if (millis() - last_report > 2000) {
+        last_report = millis();
+        Serial.print("IMU: fresh="); Serial.print(fresh_count);
+        Serial.print("/"); Serial.print(calls);
+        Serial.print(" (dt="); Serial.print(dt*1000, 1); Serial.println("ms)");
+        calls = fresh_count = 0;
+    }
 
     // gyro Z in deg/s from M5Unified. Deadband rejects noise (~2dps pk-pk)
     // while passing intentional rotation. Integrate in degrees directly.
