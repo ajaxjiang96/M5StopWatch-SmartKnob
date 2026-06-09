@@ -108,7 +108,8 @@ void DisplayRenderer::render(const KnobState& state, float device_angle) {
 
     // ---- 3. Composite: software-rotate text onto background ----
     // pushRotateZoom is broken on M5GFX 0.2.22; manual pixel rotation instead.
-    softwareRotateBlit(bg_, text_layer_, rot, CX, CY);
+    // Negate angle because the blit's matrix convention is opposite the arc's.
+    softwareRotateBlit(bg_, text_layer_, -rot, CX, CY);
 
     // ---- 4. Push final frame to display ----
     bg_.pushSprite(0, 0);

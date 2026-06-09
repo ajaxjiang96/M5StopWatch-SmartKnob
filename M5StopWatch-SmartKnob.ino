@@ -46,10 +46,12 @@ static constexpr uint32_t DISPLAY_INTERVAL_MS = 33;  // ~30 fps
 static constexpr uint32_t DEBUG_INTERVAL_MS   = 1000; // 1 Hz debug output
 
 // ---- Rotation sensitivity presets ----
-// Higher = more virtual angle per physical rotation
-static constexpr float SENSITIVITY_DEFAULT = 3.0f;
-static constexpr float SENSITIVITY_FINE    = 6.0f;  // 256 positions mode
-static constexpr float SENSITIVITY_COARSE  = 2.0f;
+// Higher = more virtual angle per physical rotation.
+// Baseline is 1.0 = 1:1 deg→deg mapping (gyro deg/s * PI/180 * sensitivity = rad/s virtual).
+// Tune after checking serial output during a known 90° rotation.
+static constexpr float SENSITIVITY_DEFAULT = 1.0f;
+static constexpr float SENSITIVITY_FINE    = 3.0f;  // 256 positions mode
+static constexpr float SENSITIVITY_COARSE  = 0.8f;
 
 // ---- NVS keys ----
 static const char* NVS_NAMESPACE = "stopwatch";
@@ -200,21 +202,17 @@ void loop() {
         // Read battery level
         int batt = M5.Power.getBatteryLevel();
 
-        Serial.print("Pos: ");
-        Serial.print(detent.getPosition());
-        Serial.print("  Sub: ");
-        Serial.print(detent.getSubPositionUnit(), 3);
-        Serial.print("  Angle: ");
-        Serial.print(virtual_angle, 2);
-        Serial.print(" rad  Vel: ");
-        Serial.print(imu.getVelocity(), 3);
-        Serial.print(" rad/s  Stationary: ");
-        Serial.print(imu.isStationary() ? "Y" : "N");
-        Serial.print("  Config: ");
-        Serial.print(current_config_index);
-        Serial.print("  Batt: ");
-        Serial.print(batt);
-        Serial.println("%");
+        float vel_deg = imu.getVelocity() * 180.0f / PI; // rad/s → deg/s
+        float angle_deg = virtual_angle * 180.0f / PI;    // rad → deg
+        Serial.print("Pos:"); Serial.print(detent.getPosition());
+        Serial.print(" sub:"); Serial.print(detent.getSubPositionUnit(), 2);
+        Serial.print(" gyro:"); Serial.print(vel_deg, 1); Serial.print("dps");
+        Serial.print(" angle:"); Serial.print(angle_deg, 1); Serial.print("deg");
+        Serial.print(" sens:"); Serial.print(imu.getSensitivity(), 1);
+        Serial.print(" cfg:"); Serial.print(current_config_index);
+        Serial.print(" bat:"); Serial.print(batt); Serial.print("%");
+        Serial.print(" st:"); Serial.print(imu.isStationary()?"Y":"N");
+        Serial.println();
     }
 
     // ---- 10. Yield for consistent loop timing (~120Hz target) ----
