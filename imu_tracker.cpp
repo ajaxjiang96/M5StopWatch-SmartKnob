@@ -25,16 +25,25 @@ void ImuTracker::update() {
     bool fresh = M5.Imu.update();
     if (!M5.Imu.getGyro(&gx, &gy, &gz)) return;
 
-    // Diagnostic: track how often the IMU produces fresh data
+    // Diagnostic: compare raw integration vs actual angle change
     static uint32_t calls, fresh_count, last_report;
+    static float sum_raw, sum_integrated, angle_start;
     calls++;
     if (fresh) fresh_count++;
+    sum_raw += gz * dt;               // raw gyro * dt (no sensitivity, no deadband)
+    sum_integrated += gyro_z_ * dt;   // what actually gets integrated (with deadband+sens)
+    if (calls == 1) angle_start = angle_deg_;
+
     if (millis() - last_report > 2000) {
         last_report = millis();
+        float angle_change = angle_deg_ - angle_start;
         Serial.print("IMU: fresh="); Serial.print(fresh_count);
         Serial.print("/"); Serial.print(calls);
-        Serial.print(" (dt="); Serial.print(dt*1000, 1); Serial.println("ms)");
+        Serial.print(" rawSum="); Serial.print(sum_raw, 1); Serial.print("deg");
+        Serial.print(" intSum="); Serial.print(sum_integrated * sensitivity_, 1); Serial.print("deg");
+        Serial.print(" angleChg="); Serial.print(angle_change, 1); Serial.println("deg");
         calls = fresh_count = 0;
+        sum_raw = sum_integrated = 0;
     }
 
     // gyro Z in deg/s from M5Unified. Deadband rejects noise (~2dps pk-pk)
