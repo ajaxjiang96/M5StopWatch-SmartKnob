@@ -25,9 +25,24 @@ void ImuTracker::update() {
     M5.Imu.update();
     if (!M5.Imu.getGyro(&gx, &gy, &gz)) return;
 
-    // gyro Z in deg/s. Debias and integrate in degrees directly.
-    gyro_z_ = gz - gyro_bias_;
+    // gyro Z in deg/s from M5Unified. Apply deadband to reject noise (~2dps pk-pk)
+    // while passing intentional rotation. Then debias and integrate in degrees.
+    float debiased = gz - gyro_bias_;
+    if (fabsf(debiased) < 0.8f) {
+        gyro_z_ = 0;
+    } else {
+        gyro_z_ = debiased;
+    }
     angle_deg_ += gyro_z_ * dt * sensitivity_;
+
+    // Diagnostic: print raw gz once per second for calibration
+    static uint32_t last_diag;
+    if (millis() - last_diag > 1000) {
+        last_diag = millis();
+        Serial.print("RAW gz="); Serial.print(gz, 1); Serial.print("dps  bias=");
+        Serial.print(gyro_bias_, 2); Serial.print("  angle=");
+        Serial.print(angle_deg_, 1); Serial.println("deg");
+    }
 
     // Stationarity detection
     float abs_vel = fabsf(gyro_z_);
