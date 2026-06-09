@@ -42,8 +42,8 @@ private:
 
     static constexpr float D2R = 3.14159265358979323846f / 180.0f;
     static constexpr float BIAS_ALPHA = 0.002f;
-    static constexpr float VELOCITY_EWMA_ALPHA = 0.05f;
-    static constexpr float STATIONARY_THRESHOLD = 0.5f;   // deg/s
-    static constexpr float BIAS_GATE = 0.3f;              // deg/s
-    static constexpr uint32_t STATIONARY_TIME_MS = 300;
+    static constexpr float VELOCITY_EWMA_ALPHA = 0.02f;   // less sensitive to spikes
+    static constexpr float STATIONARY_THRESHOLD = 1.0f;   // deg/s
+    static constexpr float BIAS_GATE = 0.5f;              // deg/s
+    static constexpr uint32_t STATIONARY_TIME_MS = 500;
 };
